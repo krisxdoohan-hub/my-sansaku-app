@@ -99,7 +99,7 @@
             <i class="ph ph-map-pin-line text-2xl group-active:scale-90 transition-transform"></i>
             <div class="flex flex-col">
                 <span class="font-black tracking-widest text-sm text-stone-800">散策軌跡手帳</span>
-                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.3</span></span>
+                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.4</span></span>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -777,10 +777,14 @@
                 } else if (result.status === "error") {
                     console.error("GAS 內部錯誤:", result.message);
                     alert("試算表寫入失敗，請檢查 GAS 權限或錯誤紀錄：" + result.message);
+                    hideLoading();
+                    return; // 發生錯誤時中斷執行，避免假成功寫入資料庫
                 }
             } catch (err) {
                 console.error("GAS 請求失敗 (可能是 CORS 或網路問題):", err);
                 alert("無法連線至 Google 試算表，圖片可能遺失，請確認 GAS 部署狀態與權限。");
+                hideLoading();
+                return; // 發生錯誤時中斷執行，避免假成功寫入資料庫
             }
             // --- 修改結束 ---
 
