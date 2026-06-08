@@ -25,7 +25,6 @@
             appId: "1:310798057966:web:e8a8b88b8622a709a3ceff",
        };
 
-
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -264,7 +263,8 @@
         function dbDelete(sName, id) { return new Promise((res, rej) => { if (!dbInstance) return rej(); const req = dbInstance.transaction(sName, 'readwrite').objectStore(sName).delete(id); req.onsuccess = () => res(); req.onerror = () => rej(req.error); }); }
         function dbClear(sName) { return new Promise((res, rej) => { if (!dbInstance) return rej(); const req = dbInstance.transaction(sName, 'readwrite').objectStore(sName).clear(); req.onsuccess = () => res(); req.onerror = () => rej(req.error); }); }
 
-        
+        // 統一在全域設定 GAS 網址，避免重複宣告錯誤
+        const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
         
         let records = []; 
         let currentViewDate = new Date(); 
@@ -361,7 +361,7 @@
                 await initDB();
             } catch (error) { console.error("本地DB載入失敗", error); }
 
-            const ADMIN_UID = "zWeaVysdinQwVhX70x8OWQfaUAg2"; // 主揪專屬 UID
+            const ADMIN_UID = "zWeaVysdinQwVhX70x8OWQfaUAg2"; // 您的專屬主揪 UID
 
             window.onAuthStateChanged(window.firebaseAuth, async (user) => {
                 if (user) {
@@ -753,18 +753,13 @@
             
             await dbPut('recordsStore', newRecord);
             
-            // 阻擋使用者操作，顯示雲端寫入中的載入畫面
             showLoading("同步至試算表與雲端中...");
 
-            // --- 修改：將資料與動作傳送至 Google Sheets (GAS) ---
-            // ⚠️ 請務必確認下方的 gasUrl 是重新部署後取得的最新網址
-            const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
-            
             try {
                 const response = await fetch(gasUrl, {
                     method: 'POST',
                     body: JSON.stringify({
-                        uid: window.currentUserUid, // 新增這行：將當前登入者 UID 送給 GAS
+                        uid: window.currentUserUid,
                         id: recordId,
                         action: 'save',
                         date: d,
@@ -780,7 +775,6 @@
                 
                 const result = await response.json();
                 
-                // 成功取得 GAS 回傳的圖片連結，更新到目前的 record 中並重新寫入本地 DB
                 if (result.status === "success" && result.imageUrl) {
                     newRecord.receipt_url = result.imageUrl;
                     await dbPut('recordsStore', newRecord);
@@ -788,29 +782,45 @@
                     console.error("GAS 內部錯誤:", result.message);
                     alert("試算表寫入失敗，請檢查 GAS 權限或錯誤紀錄：" + result.message);
                     hideLoading();
-                    return; // 發生錯誤時中斷執行，避免假成功寫入資料庫
+                    return; 
                 }
             } catch (err) {
                 console.error("GAS 請求失敗 (可能是 CORS 或網路問題):", err);
                 alert("無法連線至 Google 試算表，圖片可能遺失，請確認 GAS 部署狀態與權限。");
                 hideLoading();
-                return; // 發生錯誤時中斷執行，避免假成功寫入資料庫
+                return; 
             }
-            // --- 修改結束 ---
 
-            // 中間省略到 executeDelete 區塊的 GAS 呼叫 //
+            updateCloudIcon('unsynced');
+            try {
+                if (navigator.onLine && window.db && window.currentUserUid) {
+                    await firestoreWriteRecord(newRecord);
+                    hasUnsyncedChanges = false;
+                    updateCloudIcon('success');
+                } else { await enqueueSyncItem({ ...newRecord, action: 'save' }); }
+            } catch (error) { await enqueueSyncItem({ ...newRecord, action: 'save' }); }
+            
+            hideLoading();
+            closeAddModal();
+            renderAll();
+        }
 
-            // --- 新增：將刪除指令傳送至 Google Sheets (GAS) ---
-            const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
+        async function executeDelete() {
+            if (!editingRecordId) return;
+            const targetId = editingRecordId;
+            records = records.filter(r => r.id !== targetId);
+            await dbDelete('recordsStore', targetId);
+            closeAddModal();
+            renderAll();
+
             fetch(gasUrl, {
                 method: 'POST',
                 body: JSON.stringify({
-                    uid: window.currentUserUid, // 新增這行：將當前登入者 UID 送給 GAS
+                    uid: window.currentUserUid,
                     id: targetId,
                     action: 'delete'
                 })
             }).catch(err => console.error("GAS 刪除失敗:", err));
-            // --- 新增結束 ---
 
             updateCloudIcon('unsynced');
             try {
