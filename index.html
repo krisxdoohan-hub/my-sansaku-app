@@ -99,7 +99,7 @@
             <i class="ph ph-map-pin-line text-2xl group-active:scale-90 transition-transform"></i>
             <div class="flex flex-col">
                 <span class="font-black tracking-widest text-sm text-stone-800">散策軌跡手帳</span>
-                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.1</span></span>
+                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.2</span></span>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -748,21 +748,31 @@
 
             // --- 修改：將資料與動作傳送至 Google Sheets (GAS) ---
             const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
-            fetch(gasUrl, {
-                method: 'POST',
-                body: JSON.stringify({
-                    id: recordId,
-                    action: 'save',
-                    date: d,
-                    time: t,
-                    start_point: st,
-                    end_point: ed,
-                    transport: tr,
-                    segment_steps: sSteps,
-                    note: n,
-                    receipt_image: currentReceiptBase64
-                })
-            }).catch(err => console.error("GAS 寫入失敗:", err));
+            try {
+                const response = await fetch(gasUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        id: recordId,
+                        action: 'save',
+                        date: d,
+                        time: t,
+                        start_point: st,
+                        end_point: ed,
+                        transport: tr,
+                        segment_steps: sSteps,
+                        note: n,
+                        receipt_image: currentReceiptBase64
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === "success" && result.imageUrl) {
+                    newRecord.receipt_url = result.imageUrl;
+                }
+            } catch (err) {
+                console.error("GAS 寫入失敗:", err);
+            }
             // --- 修改結束 ---
 
             updateCloudIcon('unsynced');
