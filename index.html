@@ -87,7 +87,7 @@
                 <input type="password" id="fb-password" placeholder="密碼" class="w-full bg-stone-800/50 border border-stone-600 rounded-xl p-3 text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-inner">
                 <div class="flex gap-3 mt-2">
                     <button onclick="handleFirebaseLogin()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl transition duration-200 shadow-lg shadow-amber-900/50 active:scale-95 focus:outline-none">登入</button>
-                    <button onclick="handleFirebaseRegister()" class="flex-1 bg-stone-600 hover:bg-stone-700 text-white font-bold py-3 rounded-xl transition duration-200 shadow-lg active:scale-95 focus:outline-none border border-stone-500">註冊</button>
+                    <button onclick="handleFirebaseRegister()" class="hidden flex-1 bg-stone-600 hover:bg-stone-700 text-white font-bold py-3 rounded-xl transition duration-200 shadow-lg active:scale-95 focus:outline-none border border-stone-500">註冊</button>
                 </div>
                 <p id="fb-error-msg" class="text-rose-400 text-xs text-center h-4 font-bold opacity-0 transition-opacity"></p>
             </div>
@@ -99,7 +99,7 @@
             <i class="ph ph-map-pin-line text-2xl group-active:scale-90 transition-transform"></i>
             <div class="flex flex-col">
                 <span class="font-black tracking-widest text-sm text-stone-800">散策軌跡手帳</span>
-                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.4</span></span>
+                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.5</span></span>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -359,8 +359,15 @@
                 await initDB();
             } catch (error) { console.error("本地DB載入失敗", error); }
 
+            const ADMIN_UID = "zWeaVysdinQwVhX70x8OWQfaUAg2"; // 主揪專屬 UID
+
             window.onAuthStateChanged(window.firebaseAuth, async (user) => {
                 if (user) {
+                    if (user.uid !== ADMIN_UID) {
+                        alert("抱歉，您不是授權的主揪帳號，無法使用此系統。");
+                        await window.signOut(window.firebaseAuth);
+                        return;
+                    }
                     window.currentUserUid = user.uid;
                     unlockApp();
                     
@@ -755,6 +762,7 @@
                 const response = await fetch(gasUrl, {
                     method: 'POST',
                     body: JSON.stringify({
+                        uid: window.currentUserUid, // 新增這行：將當前登入者 UID 送給 GAS
                         id: recordId,
                         action: 'save',
                         date: d,
@@ -788,34 +796,14 @@
             }
             // --- 修改結束 ---
 
-            updateCloudIcon('unsynced');
-            try {
-                if (navigator.onLine && window.db && window.currentUserUid) {
-                    await firestoreWriteRecord(newRecord);
-                    hasUnsyncedChanges = false;
-                    updateCloudIcon('success');
-                } else { await enqueueSyncItem({ ...newRecord, action: 'save' }); }
-            } catch (error) { await enqueueSyncItem({ ...newRecord, action: 'save' }); }
-            
-            // 等所有同步作業完成後，再關閉視窗與更新畫面
-            hideLoading();
-            closeAddModal();
-            renderAll();
-        }
-
-        async function executeDelete() {
-            if (!editingRecordId) return;
-            const targetId = editingRecordId;
-            records = records.filter(r => r.id !== targetId);
-            await dbDelete('recordsStore', targetId);
-            closeAddModal();
-            renderAll();
+            // 中間省略到 executeDelete 區塊的 GAS 呼叫 //
 
             // --- 新增：將刪除指令傳送至 Google Sheets (GAS) ---
             const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
             fetch(gasUrl, {
                 method: 'POST',
                 body: JSON.stringify({
+                    uid: window.currentUserUid, // 新增這行：將當前登入者 UID 送給 GAS
                     id: targetId,
                     action: 'delete'
                 })
