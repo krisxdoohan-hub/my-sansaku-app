@@ -264,8 +264,7 @@
         function dbDelete(sName, id) { return new Promise((res, rej) => { if (!dbInstance) return rej(); const req = dbInstance.transaction(sName, 'readwrite').objectStore(sName).delete(id); req.onsuccess = () => res(); req.onerror = () => rej(req.error); }); }
         function dbClear(sName) { return new Promise((res, rej) => { if (!dbInstance) return rej(); const req = dbInstance.transaction(sName, 'readwrite').objectStore(sName).clear(); req.onsuccess = () => res(); req.onerror = () => rej(req.error); }); }
 
-        // 請將以下這行加在最上方的變數宣告區（替換成您最新的 GAS 網址）
-        const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
+        
         
         let records = []; 
         let currentViewDate = new Date(); 
@@ -758,6 +757,8 @@
             showLoading("同步至試算表與雲端中...");
 
             // --- 修改：將資料與動作傳送至 Google Sheets (GAS) ---
+            // ⚠️ 請務必確認下方的 gasUrl 是重新部署後取得的最新網址
+            const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
             
             try {
                 const response = await fetch(gasUrl, {
@@ -799,7 +800,8 @@
 
             // 中間省略到 executeDelete 區塊的 GAS 呼叫 //
 
-            
+            // --- 新增：將刪除指令傳送至 Google Sheets (GAS) ---
+            const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
             fetch(gasUrl, {
                 method: 'POST',
                 body: JSON.stringify({
