@@ -98,7 +98,7 @@
             <i class="ph ph-map-pin-line text-2xl group-active:scale-90 transition-transform"></i>
             <div class="flex flex-col">
                 <span class="font-black tracking-widest text-sm text-stone-800">散策軌跡手帳</span>
-                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.5</span></span>
+                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.6</span></span>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -264,7 +264,7 @@
         function dbClear(sName) { return new Promise((res, rej) => { if (!dbInstance) return rej(); const req = dbInstance.transaction(sName, 'readwrite').objectStore(sName).clear(); req.onsuccess = () => res(); req.onerror = () => rej(req.error); }); }
 
         // 統一在全域設定 GAS 網址，避免重複宣告錯誤
-        const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
+        var gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
         
         let records = []; 
         let currentViewDate = new Date(); 
