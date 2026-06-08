@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>個人散策軌跡與步數紀錄</title>
+    <link rel="manifest" href="./manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+        // 加入信箱密碼登入與登出模組
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
+        import {
+            getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, serverTimestamp
+        } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDgSUTOYpWcH2Cv7NW4JQwz9o6F2PIAAi0",
+            authDomain: "my-sansaku-app.firebaseapp.com",
+            projectId: "my-sansaku-app",
+            storageBucket: "my-sansaku-app.firebasestorage.app",
+            messagingSenderId: "310798057966",
+            appId: "1:310798057966:web:e8a8b88b8622a709a3ceff",
+       };
+
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // 暴露至全域
+        window.firebaseAuth = auth;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.signOut = signOut;
+        window.onAuthStateChanged = onAuthStateChanged;
+
+        window.db = db;
+        window.fsDoc = doc;
+        window.fsGetDoc = getDoc;
+        window.fsSetDoc = setDoc;
+        window.fsDeleteDoc = deleteDoc;
+        window.fsCollection = collection;
+        window.fsGetDocs = getDocs;
+        window.fsServerTimestamp = serverTimestamp;
+    </script>
+
+    <style>
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        body { overscroll-behavior-y: none; -webkit-overflow-scrolling: touch; }
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; width: 20px; height: 20px; animation: spin 1s ease-in-out infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .donut-chart { width: 140px; height: 140px; border-radius: 50%; position: relative; }
+        .donut-chart::before { content: ""; position: absolute; inset: 30px; background-color: #ffffff; border-radius: 50%; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+        
+        /* 溫暖手帳風幾何浮水印背景 */
+        .sketch-bg {
+            background-color: #fcf8f2;
+            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23e6d5c3' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+    </style>
+</head>
+<body class="text-stone-800 font-sans antialiased h-[100dvh] flex flex-col relative overflow-hidden sketch-bg">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-stone-900/80 z-[300] hidden flex-col justify-center items-center text-white backdrop-blur-sm">
+        <div class="spinner mb-4 w-10 h-10 border-4"></div>
+        <p id="loading-text" class="font-bold tracking-wider text-amber-100">處理中...</p>
+    </div>
+
+    <div id="lock-screen" class="fixed inset-0 bg-stone-900/95 z-[200] flex flex-col justify-center items-center text-white p-6 transition-all duration-300 sketch-bg">
+        <div class="w-full max-w-xs text-center space-y-10 bg-white/10 p-8 rounded-[32px] backdrop-blur-md border border-amber-100/20 shadow-2xl">
+            <div class="flex flex-col items-center gap-4">
+                <div class="w-20 h-20 bg-amber-500/20 rounded-full flex items-center justify-center border border-amber-500/50 shadow-xl">
+                    <i class="ph ph-map-pin-line text-4xl text-amber-400"></i>
+                </div>
+                <h2 class="text-2xl font-black tracking-widest text-white">散策軌跡手帳</h2>
+                <p class="text-xs text-amber-200 font-medium opacity-80">請登入專屬帳號以同步跨裝置紀錄</p>
+            </div>
+            
+            <div class="flex flex-col gap-4 w-full mx-auto mt-6">
+                <input type="email" id="fb-email" placeholder="信箱" class="w-full bg-stone-800/50 border border-stone-600 rounded-xl p-3 text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-inner">
+                <input type="password" id="fb-password" placeholder="密碼" class="w-full bg-stone-800/50 border border-stone-600 rounded-xl p-3 text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-inner">
+                <div class="flex gap-3 mt-2">
+                    <button onclick="handleFirebaseLogin()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl transition duration-200 shadow-lg shadow-amber-900/50 active:scale-95 focus:outline-none">登入</button>
+                    <button onclick="handleFirebaseRegister()" class="flex-1 bg-stone-600 hover:bg-stone-700 text-white font-bold py-3 rounded-xl transition duration-200 shadow-lg active:scale-95 focus:outline-none border border-stone-500">註冊</button>
+                </div>
+                <p id="fb-error-msg" class="text-rose-400 text-xs text-center h-4 font-bold opacity-0 transition-opacity"></p>
+            </div>
+        </div>
+    </div>
+
+    <header class="bg-white/80 backdrop-blur-md px-4 py-3 shadow-sm z-30 flex justify-between items-center border-b border-amber-100 flex-shrink-0">
+        <div class="flex items-center gap-2 text-amber-700 px-2 py-1 -ml-2 rounded-xl group">
+            <i class="ph ph-map-pin-line text-2xl group-active:scale-90 transition-transform"></i>
+            <div class="flex flex-col">
+                <span class="font-black tracking-widest text-sm text-stone-800">散策軌跡手帳</span>
+                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.1</span></span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="cloud-status-icon" onclick="forceSyncDownload()" class="text-stone-300 transition-colors p-1.5 rounded-full hover:bg-stone-100 focus:outline-none" title="從雲端同步最新資料">
+                <i class="ph ph-cloud-slash text-2xl"></i>
+            </button>
+            <button onclick="handleFirebaseLogout()" class="text-rose-400 transition-colors p-1.5 rounded-full hover:bg-rose-50 focus:outline-none" title="登出帳號">
+                <i class="ph ph-sign-out text-2xl"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 relative">
+        <div class="max-w-5xl mx-auto">
+            
+            <header class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-3 mx-auto">
+                    <button onclick="changeDate(-1)" class="p-2 bg-white rounded-xl shadow-sm border border-amber-100 active:scale-95 transition-transform">
+                        <i class="ph ph-caret-left text-amber-600"></i>
+                    </button>
+                    <div class="text-center min-w-[140px]">
+                        <p id="currentYearDisplay" class="text-[10px] font-black text-amber-400 uppercase tracking-widest leading-none mb-1"></p>
+                        <button onclick="resetToToday()" class="group flex flex-col items-center w-full focus:outline-none">
+                            <h1 id="currentDateDisplay" class="text-2xl font-black text-stone-800 leading-none group-active:scale-95 transition-transform"></h1>
+                            <span id="backTodayBtn" class="hidden text-[8px] font-black text-amber-500 mt-1 bg-amber-50 px-1.5 py-0.5 rounded uppercase tracking-tighter">回到今日</span>
+                        </button>
+                    </div>
+                    <button onclick="changeDate(1)" class="p-2 bg-white rounded-xl shadow-sm border border-amber-100 active:scale-95 transition-transform">
+                        <i class="ph ph-caret-right text-amber-600"></i>
+                    </button>
+                </div>
+            </header>
+
+            <div class="flex bg-amber-100/50 p-1 rounded-full w-56 mx-auto mb-6 border border-amber-200">
+                <button onclick="setView('list')" id="btn-view-list" class="flex-1 py-1.5 text-xs font-bold rounded-full bg-white text-amber-700 shadow-sm transition-all">軌跡紀錄</button>
+                <button onclick="setView('chart')" id="btn-view-chart" class="flex-1 py-1.5 text-xs font-bold rounded-full text-amber-600 hover:text-amber-800 transition-all">統計圖表</button>
+            </div>
+
+            <div id="view-list" class="space-y-4 pb-6">
+                <div id="historyList" class="space-y-4"></div>
+            </div>
+
+            <div id="view-chart" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6 pb-6">
+                <div class="bg-white/90 p-6 rounded-[24px] shadow-sm border border-amber-100 flex flex-col items-center">
+                    <h3 class="text-sm font-bold text-stone-700 mb-6 flex items-center gap-2"><i class="ph ph-chart-pie-slice text-amber-500"></i> 交通方式移動佔比</h3>
+                    <div id="transport-pie" class="donut-chart"></div>
+                    <div id="transport-legend" class="mt-6 flex flex-wrap justify-center gap-3 text-[11px] font-bold text-stone-600 w-full"></div>
+                </div>
+
+                <div class="bg-white/90 p-6 rounded-[24px] shadow-sm border border-amber-100 flex flex-col">
+                    <h3 class="text-sm font-bold text-stone-700 mb-6 flex items-center gap-2"><i class="ph ph-chart-bar text-amber-500"></i> 各路段步數消耗負荷</h3>
+                    <div id="steps-bar-container" class="flex-1 flex items-end gap-3 overflow-x-auto no-scrollbar pb-2 min-h-[160px]"></div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <button onclick="openAddModal()" class="fixed bottom-6 right-6 bg-amber-600 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-amber-700 active:scale-90 transition-transform z-40 focus:outline-none shadow-amber-900/20 border-2 border-white">
+        <i class="ph ph-sneaker text-2xl"></i>
+    </button>
+
+    <div id="addRecordModal" class="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 hidden flex-col justify-end sm:justify-center items-center p-0 sm:p-4 transition-opacity duration-300 opacity-0">
+        <div class="bg-[#faf7f2] w-full sm:max-w-md rounded-t-[32px] sm:rounded-[24px] shadow-2xl transform translate-y-full sm:translate-y-0 transition-transform duration-300 flex flex-col max-h-[90vh]" id="addRecordContent">
+            <div class="p-6 border-b border-amber-100 flex-shrink-0 flex justify-between items-center bg-white/50 rounded-t-[32px] sm:rounded-t-[24px]">
+                <h3 class="text-lg font-black text-stone-800 flex items-center gap-2" id="modalTitle"><i class="ph ph-map-pin text-amber-500"></i> 新增散策段落</h3>
+                <button onclick="closeAddModal()" class="p-2 bg-stone-200/50 text-stone-500 rounded-full hover:bg-stone-300 active:scale-95 transition-all focus:outline-none">
+                    <i class="ph ph-x text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-4 overflow-y-auto no-scrollbar flex-1">
+                <div class="flex gap-2">
+                    <input type="date" id="input-date" onchange="autoFillStartPoint()" class="w-2/3 border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm font-bold text-stone-700 shadow-sm">
+                    <input type="time" id="input-time" class="w-1/3 border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm font-bold text-stone-700 shadow-sm">
+                </div>
+
+                <div class="bg-white border border-amber-100 rounded-xl p-3 shadow-sm space-y-3">
+                    <div class="flex items-center gap-2">
+                        <i class="ph ph-record text-amber-500"></i>
+                        <input type="text" id="input-start" placeholder="起點 (例如：捷運迴龍站)" onfocus="setFocus('start')" class="flex-1 bg-transparent focus:outline-none text-sm font-bold text-stone-800 placeholder-stone-300">
+                    </div>
+                    <div class="border-l-2 border-dashed border-amber-200 ml-2.5 h-4"></div>
+                    <div class="flex items-center gap-2">
+                        <i class="ph ph-map-pin-line text-rose-500"></i>
+                        <input type="text" id="input-end" placeholder="終點 (例如：台北 SOGO)" onfocus="setFocus('end')" class="flex-1 bg-transparent focus:outline-none text-sm font-bold text-stone-800 placeholder-stone-300">
+                    </div>
+                </div>
+
+                <div class="space-y-1.5">
+                    <span class="text-[10px] text-amber-700 font-bold flex items-center gap-1"><i class="ph ph-clock-counter-clockwise"></i> 歷史軌跡快速帶入：</span>
+                    <div id="quick-tags-container" class="flex flex-wrap gap-2"></div>
+                </div>
+
+                <div class="flex gap-2">
+                    <select id="input-transport" class="w-1/3 border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm font-bold text-stone-700 shadow-sm">
+                        <option value="步行">🚶 步行</option>
+                        <option value="捷運">🚇 捷運</option>
+                        <option value="公車">🚌 公車</option>
+                        <option value="火車/高鐵">🚆 鐵路</option>
+                        <option value="自行車">🚲 單車</option>
+                    </select>
+                    <div class="w-2/3 relative">
+                        <input type="number" id="input-cumul-steps" placeholder="請輸入 Garmin 上的總步數" oninput="calculateSegmentSteps()" class="w-full border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm font-bold text-stone-800 shadow-sm pl-10 pr-4">
+                        <i class="ph ph-watch text-amber-400 absolute left-3 top-1/2 -translate-y-1/2 text-lg"></i>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-3 flex justify-between items-center shadow-inner">
+                    <span class="text-xs font-bold text-amber-800">此段區間消耗步數自動結算：</span>
+                    <span class="text-xl font-black text-rose-600 tracking-wider" id="display-seg-steps">0</span>
+                </div>
+
+                <div>
+                    <textarea id="input-note" placeholder="記錄沿途風景或心情..." rows="2" class="w-full border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm text-stone-700 shadow-sm resize-none"></textarea>
+                </div>
+
+                <div class="bg-white p-2.5 rounded-xl border border-amber-200 flex items-center gap-3 shadow-sm">
+                    <button type="button" onclick="document.getElementById('input-receipt').click()" class="flex-shrink-0 bg-stone-50 border border-stone-200 text-stone-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-stone-100 active:scale-95 transition flex items-center gap-1 focus:outline-none">
+                        <i class="ph ph-camera text-lg text-amber-600"></i> 附加街景隨拍
+                    </button>
+                    <input type="file" id="input-receipt" accept="image/*" class="hidden" onchange="handleReceiptUpload(event)">
+                    <div id="receipt-preview-container" class="hidden flex-1 items-center justify-between">
+                        <div class="flex items-center gap-2 overflow-hidden">
+                            <img id="receipt-preview" src="" class="h-10 w-10 object-cover rounded shadow-sm border border-amber-200">
+                            <span id="receipt-name" class="text-[10px] text-stone-500 truncate max-w-[80px]">已選取照片</span>
+                        </div>
+                        <button type="button" onclick="clearReceipt()" class="text-rose-400 hover:text-rose-600 focus:outline-none p-1"><i class="ph ph-x-circle text-xl"></i></button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-4 border-t border-amber-100 bg-white/50 rounded-b-[32px] sm:rounded-b-[24px] flex gap-3 flex-shrink-0">
+                <button id="btn-delete" onclick="executeDelete()" class="hidden w-1/3 bg-rose-100 hover:bg-rose-200 text-rose-600 font-bold py-3.5 rounded-xl transition duration-200 active:scale-95 focus:outline-none border border-rose-200">
+                    刪除
+                </button>
+                <button id="btn-save" onclick="saveRecord()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-black tracking-widest py-3.5 rounded-xl transition duration-200 shadow-lg shadow-amber-600/30 active:scale-95 flex justify-center items-center gap-2 focus:outline-none border-b-4 border-amber-800/40">
+                    <i class="ph ph-check-circle text-xl"></i> 寫入手帳
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(()=>{}); }); }
+
+        let dbInstance = null;
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('WalkRecordsDB', 1);
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains('recordsStore')) db.createObjectStore('recordsStore', { keyPath: 'id' });
+                    if (!db.objectStoreNames.contains('queueStore')) db.createObjectStore('queueStore', { keyPath: 'id' });
+                };
+                request.onsuccess = (event) => { dbInstance = event.target.result; resolve(dbInstance); };
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+        function dbGetAll(sName) { return new Promise((res, rej) => { if (!dbInstance) return res([]); const req = dbInstance.transaction(sName, 'readonly').objectStore(sName).getAll(); req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); }); }
+        function dbPut(sName, item) { return new Promise((res, rej) => { if (!dbInstance) return rej(); const req = dbInstance.transaction(sName, 'readwrite').objectStore(sName).put(item); req.onsuccess = () => res(); req.onerror = () => rej(req.error); }); }
+        function dbDelete(sName, id) { return new Promise((res, rej) => { if (!dbInstance) return rej(); const req = dbInstance.transaction(sName, 'readwrite').objectStore(sName).delete(id); req.onsuccess = () => res(); req.onerror = () => rej(req.error); }); }
+        function dbClear(sName) { return new Promise((res, rej) => { if (!dbInstance) return rej(); const req = dbInstance.transaction(sName, 'readwrite').objectStore(sName).clear(); req.onsuccess = () => res(); req.onerror = () => rej(req.error); }); }
+
+        let records = []; 
+        let currentViewDate = new Date(); 
+        let editingRecordId = null;
+        let hasUnsyncedChanges = false;
+        let syncQueue = [];
+        let currentReceiptBase64 = null;
+        let focusedInput = 'start';
+        let currentView = 'list';
+
+        window.currentUserUid = null;
+
+        function getLocalYMD(d) { const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0'); return `${y}-${m}-${day}`; }
+        function showLoading(t) { document.getElementById('loading-text').innerText = t; document.getElementById('loading-overlay').classList.replace('hidden', 'flex'); }
+        function hideLoading() { document.getElementById('loading-overlay').classList.replace('flex', 'hidden'); }
+
+        function updateCloudIcon(state) {
+            const icon = document.getElementById('cloud-status-icon');
+            if (state === 'success') { 
+                icon.innerHTML = '<i class="ph ph-cloud-check text-2xl"></i>'; icon.className = 'text-emerald-500 transition-colors p-1.5 rounded-full hover:bg-emerald-50'; 
+            } else if (state === 'unsynced') {
+                icon.innerHTML = '<i class="ph ph-cloud-arrow-up text-2xl"></i>'; icon.className = 'text-amber-500 transition-colors p-1.5 rounded-full animate-pulse hover:bg-amber-50'; 
+            } else { 
+                icon.innerHTML = '<i class="ph ph-cloud-warning text-2xl"></i>'; icon.className = 'text-rose-400 transition-colors p-1.5 rounded-full hover:bg-rose-50'; 
+            }
+        }
+
+        // --- 登入與註冊邏輯 ---
+        async function handleFirebaseLogin() {
+            const email = document.getElementById('fb-email').value;
+            const password = document.getElementById('fb-password').value;
+            const errorMsg = document.getElementById('fb-error-msg');
+            if (!email || !password) { errorMsg.innerText = "請輸入信箱與密碼"; errorMsg.style.opacity = '1'; return; }
+            
+            showLoading("登入中...");
+            try {
+                await window.signInWithEmailAndPassword(window.firebaseAuth, email, password);
+            } catch (error) {
+                errorMsg.innerText = "登入失敗，請檢查帳號密碼";
+                errorMsg.style.opacity = '1';
+                hideLoading();
+            }
+        }
+
+        async function handleFirebaseRegister() {
+            const email = document.getElementById('fb-email').value;
+            const password = document.getElementById('fb-password').value;
+            const errorMsg = document.getElementById('fb-error-msg');
+            if (!email || !password) { errorMsg.innerText = "請輸入信箱與密碼"; errorMsg.style.opacity = '1'; return; }
+            
+            showLoading("註冊中...");
+            try {
+                await window.createUserWithEmailAndPassword(window.firebaseAuth, email, password);
+            } catch (error) {
+                if (error.code === 'auth/email-already-in-use') errorMsg.innerText = "信箱已被註冊";
+                else if (error.code === 'auth/weak-password') errorMsg.innerText = "密碼至少 6 個字元";
+                else errorMsg.innerText = "註冊失敗";
+                errorMsg.style.opacity = '1';
+                hideLoading();
+            }
+        }
+
+        async function handleFirebaseLogout() {
+            try {
+                await window.signOut(window.firebaseAuth);
+                window.currentUserUid = null;
+                records = [];
+                await dbClear('recordsStore');
+                window.location.reload();
+            } catch (e) { alert("登出失敗"); }
+        }
+
+        function unlockApp() {
+            hideLoading();
+            const overlay = document.getElementById('lock-screen');
+            overlay.classList.add('opacity-0', 'pointer-events-none');
+            overlay.style.transform = "scale(1.1)";
+            setTimeout(() => { overlay.classList.add('hidden'); overlay.classList.remove('flex'); }, 400);
+        }
+
+        function lockApp() {
+            hideLoading();
+            const overlay = document.getElementById('lock-screen');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            requestAnimationFrame(() => {
+                overlay.classList.remove('opacity-0', 'pointer-events-none');
+                overlay.style.transform = "scale(1)";
+            });
+        }
+
+        async function init() {
+            try {
+                await initDB();
+            } catch (error) { console.error("本地DB載入失敗", error); }
+
+            window.onAuthStateChanged(window.firebaseAuth, async (user) => {
+                if (user) {
+                    window.currentUserUid = user.uid;
+                    unlockApp();
+                    
+                    // 登入後載入快取與同步
+                    records = await dbGetAll('recordsStore') || [];
+                    syncQueue = await dbGetAll('queueStore') || [];
+                    if (syncQueue.length > 0) hasUnsyncedChanges = true;
+                    
+                    renderAll();
+                    forceSyncDownload();
+                    processSyncQueue();
+                } else {
+                    lockApp();
+                }
+            });
+
+            window.addEventListener('online', processSyncQueue);
+        }
+
+        function setView(v) {
+            currentView = v;
+            const btnList = document.getElementById('btn-view-list');
+            const btnChart = document.getElementById('btn-view-chart');
+            const divList = document.getElementById('view-list');
+            const divChart = document.getElementById('view-chart');
+
+            if (v === 'list') {
+                btnList.className = "flex-1 py-1.5 text-xs font-bold rounded-full bg-white text-amber-700 shadow-sm transition-all";
+                btnChart.className = "flex-1 py-1.5 text-xs font-bold rounded-full text-amber-600 hover:text-amber-800 transition-all";
+                divList.classList.remove('hidden'); divChart.classList.add('hidden');
+                divChart.classList.remove('grid');
+            } else {
+                btnChart.className = "flex-1 py-1.5 text-xs font-bold rounded-full bg-white text-amber-700 shadow-sm transition-all";
+                btnList.className = "flex-1 py-1.5 text-xs font-bold rounded-full text-amber-600 hover:text-amber-800 transition-all";
+                divList.classList.add('hidden'); divChart.classList.remove('hidden');
+                divChart.classList.add('grid');
+                renderCharts();
+            }
+        }
+
+        function renderAll() {
+            const y = currentViewDate.getFullYear();
+            const m = String(currentViewDate.getMonth() + 1).padStart(2, '0');
+            const d = String(currentViewDate.getDate()).padStart(2, '0');
+            document.getElementById('currentYearDisplay').innerText = `${y} 年`;
+            document.getElementById('currentDateDisplay').innerText = `${m}月${d}日`;
+            
+            const today = new Date();
+            const btn = document.getElementById('backTodayBtn');
+            if(y === today.getFullYear() && m === String(today.getMonth() + 1).padStart(2, '0') && d === String(today.getDate()).padStart(2, '0')) {
+                btn.classList.add('hidden');
+            } else {
+                btn.classList.remove('hidden');
+            }
+
+            renderHistory();
+            if (currentView === 'chart') renderCharts();
+        }
+
+        function changeDate(delta) { currentViewDate.setDate(currentViewDate.getDate() + delta); renderAll(); }
+        function resetToToday() { currentViewDate = new Date(); renderAll(); }
+
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            const targetDate = getLocalYMD(currentViewDate);
+            const targetRecords = records.filter(r => r.date === targetDate).sort((a,b) => a.time.localeCompare(b.time));
+            
+            if(targetRecords.length === 0) { list.innerHTML = `<div class="bg-white/70 backdrop-blur-sm rounded-2xl p-10 text-center text-amber-600/60 font-bold text-sm border border-amber-100 border-dashed shadow-sm">這一天還沒有散策紀錄喔</div>`; return; }
+            
+            let html = '';
+            targetRecords.forEach(r => {
+                const trIcon = r.transport === '步行' ? 'ph-sneaker text-emerald-500 bg-emerald-50' : 
+                               r.transport === '捷運' ? 'ph-train text-blue-500 bg-blue-50' : 
+                               r.transport === '公車' ? 'ph-bus text-amber-500 bg-amber-50' : 
+                               r.transport === '自行車' ? 'ph-bicycle text-teal-500 bg-teal-50' : 'ph-train-regional text-indigo-500 bg-indigo-50';
+                
+                const receiptIcon = (r.receipt_image || r.receipt_url) ? '<i class="ph ph-image text-amber-400 ml-1"></i>' : '';
+
+                html += `
+                <div onclick="editRecord('${r.id}')" class="bg-white/90 backdrop-blur-sm p-4 rounded-2xl shadow-sm border border-amber-100 hover:bg-amber-50 active:scale-[0.98] cursor-pointer transition-all flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${trIcon} border border-white shadow-inner">
+                            <i class="ph ${trIcon.split(' ')[0]} text-xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-amber-500 mb-0.5">${r.time}</p>
+                            <p class="text-sm font-black text-stone-800 flex items-center gap-1.5">${r.start_point} <i class="ph ph-arrow-right text-stone-400 text-xs"></i> ${r.end_point} ${receiptIcon}</p>
+                            <p class="text-xs font-bold text-stone-400 truncate max-w-[150px] mt-0.5">${r.note || ''}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] font-bold text-stone-400 mb-0.5">區間步數</p>
+                        <span class="text-lg font-black text-rose-500">${(r.segment_steps || 0).toLocaleString()}</span>
+                    </div>
+                </div>`;
+            });
+            list.innerHTML = html;
+        }
+
+        function renderCharts() {
+            const targetDate = getLocalYMD(currentViewDate);
+            const targetRecords = records.filter(r => r.date === targetDate);
+            const pieContainer = document.getElementById('transport-pie');
+            const legendContainer = document.getElementById('transport-legend');
+            const barContainer = document.getElementById('steps-bar-container');
+
+            if(targetRecords.length === 0) {
+                pieContainer.style.background = '#f5f5f4';
+                legendContainer.innerHTML = '無資料';
+                barContainer.innerHTML = '<div class="w-full text-center text-amber-400 font-bold text-xs mt-10">無步數資料</div>';
+                return;
+            }
+
+            const trCounts = {};
+            targetRecords.forEach(r => trCounts[r.transport] = (trCounts[r.transport] || 0) + 1);
+            const colors = {'步行': '#10b981', '捷運': '#3b82f6', '公車': '#f59e0b', '火車/高鐵': '#6366f1', '自行車': '#14b8a6'};
+            
+            let conicStops = [], currentDeg = 0, legendHtml = '';
+            const totalTR = targetRecords.length;
+            
+            Object.entries(trCounts).forEach(([tr, count]) => {
+                const deg = (count / totalTR) * 360;
+                const color = colors[tr] || '#9ca3af';
+                conicStops.push(`${color} ${currentDeg}deg ${currentDeg + deg}deg`);
+                currentDeg += deg;
+                legendHtml += `<span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full" style="background:${color}"></span>${tr} (${count})</span>`;
+            });
+            pieContainer.style.background = `conic-gradient(${conicStops.join(', ')})`;
+            legendContainer.innerHTML = legendHtml;
+
+            let maxSteps = Math.max(...targetRecords.map(r => r.segment_steps || 0));
+            if (maxSteps === 0) maxSteps = 1000;
+            
+            let barHtml = '';
+            targetRecords.forEach(r => {
+                const heightPct = Math.max(10, ((r.segment_steps || 0) / maxSteps) * 100);
+                barHtml += `
+                <div class="flex flex-col items-center justify-end h-full min-w-[40px] group relative">
+                    <span class="text-[9px] font-bold text-amber-600 mb-1 absolute -top-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white px-1 rounded shadow-sm whitespace-nowrap z-10">${r.segment_steps}</span>
+                    <div class="w-6 bg-gradient-to-t from-amber-500 to-amber-300 rounded-t-sm shadow-sm transition-all group-hover:opacity-80" style="height: ${heightPct}%"></div>
+                    <span class="text-[8px] font-bold text-stone-400 mt-2 truncate w-full text-center px-1" title="${r.start_point}">${r.start_point.substring(0,2)}</span>
+                </div>`;
+            });
+            barContainer.innerHTML = barHtml;
+        }
+
+        function setFocus(id) { focusedInput = id; }
+
+        function renderQuickTags() {
+            const personalDefaults = ["捷運迴龍站", "台北 SOGO", "捷運忠孝新生站", "新莊中正路"];
+            const allPoints = records.flatMap(r => [r.start_point, r.end_point]).filter(Boolean);
+            const recentPoints = [...new Set(allPoints)].reverse().slice(0, 5);
+            let uniquePoints = [...new Set([...recentPoints, ...personalDefaults])].slice(0, 6);
+
+            let html = '';
+            uniquePoints.forEach(p => {
+                html += `<button type="button" onclick="insertTag('${p}')" class="px-3 py-1 bg-white text-amber-700 rounded-full text-[11px] font-black border border-amber-200 shadow-sm hover:bg-amber-50 active:scale-95 transition focus:outline-none tracking-wide">${p}</button>`;
+            });
+            document.getElementById('quick-tags-container').innerHTML = html;
+        }
+
+        function insertTag(val) {
+            const input = document.getElementById(`input-${focusedInput}`);
+            input.value = val;
+            input.focus();
+        }
+
+        function autoFillStartPoint() {
+            if (editingRecordId) return; 
+            const dateStr = document.getElementById('input-date').value;
+            const sortedRecords = records.filter(r => r.date === dateStr).sort((a,b) => a.time.localeCompare(b.time));
+            if (sortedRecords.length > 0) {
+                document.getElementById('input-start').value = sortedRecords[sortedRecords.length - 1].end_point;
+            } else {
+                document.getElementById('input-start').value = '';
+            }
+        }
+
+        function calculateSegmentSteps() {
+            const currentCumul = parseInt(document.getElementById('input-cumul-steps').value) || 0;
+            if (currentCumul === 0) {
+                document.getElementById('display-seg-steps').innerText = '0';
+                return;
+            }
+            const dateStr = document.getElementById('input-date').value;
+            const todaysRecords = records.filter(r => r.date === dateStr).sort((a,b) => a.time.localeCompare(b.time));
+            
+            let lastCumul = 0;
+            const otherRecords = todaysRecords.filter(r => r.id !== editingRecordId);
+            if (otherRecords.length > 0) {
+                const currentTime = document.getElementById('input-time').value || "23:59";
+                const earlierRecords = otherRecords.filter(r => r.time <= currentTime);
+                if (earlierRecords.length > 0) {
+                    lastCumul = earlierRecords[earlierRecords.length - 1].cumulative_steps || 0;
+                }
+            }
+            const seg = Math.max(0, currentCumul - lastCumul);
+            document.getElementById('display-seg-steps').innerText = seg.toLocaleString();
+            return seg;
+        }
+
+        function openAddModal() {
+            editingRecordId = null;
+            document.getElementById('modalTitle').innerHTML = '<i class="ph ph-map-pin text-amber-500"></i> 新增散策段落';
+            document.getElementById('btn-delete').classList.add('hidden');
+            
+            document.getElementById('input-date').value = getLocalYMD(currentViewDate);
+            const now = new Date();
+            document.getElementById('input-time').value = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+            
+            document.getElementById('input-start').value = '';
+            document.getElementById('input-end').value = '';
+            document.getElementById('input-cumul-steps').value = '';
+            document.getElementById('display-seg-steps').innerText = '0';
+            document.getElementById('input-note').value = '';
+            document.getElementById('input-transport').value = '步行';
+            clearReceipt();
+            
+            autoFillStartPoint();
+            renderQuickTags();
+            
+            const m = document.getElementById('addRecordModal'), c = document.getElementById('addRecordContent');
+            m.classList.remove('hidden'); m.classList.add('flex');
+            requestAnimationFrame(() => { m.classList.remove('opacity-0'); c.classList.remove('translate-y-full'); });
+        }
+
+        function editRecord(id) {
+            editingRecordId = String(id);
+            const r = records.find(x => String(x.id) === String(id));
+            if(!r) return;
+            
+            document.getElementById('modalTitle').innerHTML = '<i class="ph ph-pencil-simple text-amber-500"></i> 編輯軌跡';
+            document.getElementById('btn-delete').classList.remove('hidden');
+            
+            document.getElementById('input-date').value = r.date;
+            document.getElementById('input-time').value = r.time;
+            document.getElementById('input-start').value = r.start_point;
+            document.getElementById('input-end').value = r.end_point;
+            document.getElementById('input-transport').value = r.transport;
+            document.getElementById('input-cumul-steps').value = r.cumulative_steps || '';
+            document.getElementById('input-note').value = r.note || '';
+            
+            calculateSegmentSteps();
+            renderQuickTags();
+            clearReceipt();
+
+            if (r.receipt_image || r.receipt_url) {
+                const previewImg = document.getElementById('receipt-preview');
+                currentReceiptBase64 = r.receipt_image;
+                let viewUrl = r.receipt_image || r.receipt_url;
+                if (viewUrl.includes('/file/d/')) {
+                    const fileId = viewUrl.split('/d/')[1].split('/')[0];
+                    viewUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
+                }
+                previewImg.src = viewUrl;
+                document.getElementById('receipt-name').innerText = "已附加照片";
+                document.getElementById('receipt-preview-container').classList.remove('hidden');
+                document.getElementById('receipt-preview-container').classList.add('flex');
+            }
+            
+            const m = document.getElementById('addRecordModal'), c = document.getElementById('addRecordContent');
+            m.classList.remove('hidden'); m.classList.add('flex');
+            requestAnimationFrame(() => { m.classList.remove('opacity-0'); c.classList.remove('translate-y-full'); });
+        }
+
+        function closeAddModal() {
+            const m = document.getElementById('addRecordModal'), c = document.getElementById('addRecordContent');
+            m.classList.add('opacity-0'); c.classList.add('translate-y-full');
+            setTimeout(() => { m.classList.add('hidden'); m.classList.remove('flex'); }, 300);
+        }
+
+        function handleReceiptUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1200;
+                    let width = img.width, height = img.height;
+                    if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    currentReceiptBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                    
+                    document.getElementById('receipt-preview').src = currentReceiptBase64;
+                    document.getElementById('receipt-preview-container').classList.remove('hidden');
+                    document.getElementById('receipt-preview-container').classList.add('flex');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearReceipt() {
+            currentReceiptBase64 = null;
+            document.getElementById('input-receipt').value = '';
+            document.getElementById('receipt-preview-container').classList.add('hidden');
+            document.getElementById('receipt-preview-container').classList.remove('flex');
+        }
+
+        async function firestoreWriteRecord(record) {
+            if (!window.db || !window.currentUserUid) throw new Error("Firestore 未就緒");
+            const cleanRecord = { ...record };
+            delete cleanRecord.receipt_image; 
+            cleanRecord.updatedAt = window.fsServerTimestamp();
+            const docRef = window.fsDoc(window.db, 'users', window.currentUserUid, 'walks', String(record.id));
+            await window.fsSetDoc(docRef, cleanRecord, { merge: true });
+        }
+
+        async function firestoreDeleteRecord(recordId) {
+            if (!window.db || !window.currentUserUid) throw new Error("Firestore 未就緒");
+            const docRef = window.fsDoc(window.db, 'users', window.currentUserUid, 'walks', String(recordId));
+            await window.fsDeleteDoc(docRef);
+        }
+
+        async function processSyncQueue() {
+            if (syncQueue.length === 0 || !navigator.onLine || !window.db || !window.currentUserUid) return;
+            updateCloudIcon('unsynced');
+            const currentQueue = [...syncQueue];
+            const successIds = [];
+
+            for (const queueItem of currentQueue) {
+                try {
+                    const p = queueItem.payload;
+                    if (p.action === 'delete') await firestoreDeleteRecord(p.id);
+                    else await firestoreWriteRecord(p);
+                    successIds.push(queueItem.id);
+                } catch (err) { console.error("同步重試失敗", err); }
+            }
+
+            for (const sid of successIds) {
+                syncQueue = syncQueue.filter(q => q.id !== sid);
+                await dbDelete('queueStore', sid);
+            }
+
+            if (syncQueue.length === 0) { hasUnsyncedChanges = false; updateCloudIcon('success'); }
+            else updateCloudIcon('error');
+        }
+
+        async function enqueueSyncItem(payload) {
+            const queueItem = { id: Date.now().toString() + Math.random().toString(36).substring(2, 6), payload: payload };
+            syncQueue.push(queueItem);
+            await dbPut('queueStore', queueItem);
+            hasUnsyncedChanges = true;
+            updateCloudIcon('unsynced');
+            if (navigator.onLine) processSyncQueue();
+        }
+
+        async function saveRecord() {
+            const d = document.getElementById('input-date').value;
+            const t = document.getElementById('input-time').value;
+            const st = document.getElementById('input-start').value.trim();
+            const ed = document.getElementById('input-end').value.trim();
+            const tr = document.getElementById('input-transport').value;
+            const cSteps = parseInt(document.getElementById('input-cumul-steps').value) || 0;
+            const sSteps = calculateSegmentSteps();
+            const n = document.getElementById('input-note').value;
+
+            if (!d || !t || !st || !ed) { alert("日期、時間、起點與終點皆為必填！"); return; }
+
+            const recordId = editingRecordId || Date.now().toString();
+            const existingRecord = editingRecordId ? records.find(r => String(r.id) === String(editingRecordId)) : null;
+
+            const newRecord = { 
+                id: recordId, 
+                date: d, time: t, 
+                start_point: st, end_point: ed, transport: tr,
+                cumulative_steps: cSteps, segment_steps: sSteps,
+                note: n, 
+                receipt_image: currentReceiptBase64,
+                receipt_url: existingRecord ? existingRecord.receipt_url : null,
+                rev: existingRecord ? (existingRecord.rev || 0) + 1 : 1
+            };
+
+            if(editingRecordId) {
+                const idx = records.findIndex(r => r.id === editingRecordId);
+                if(idx !== -1) records[idx] = newRecord;
+            } else { records.push(newRecord); }
+            
+            await dbPut('recordsStore', newRecord);
+            closeAddModal();
+            renderAll();
+
+            // --- 修改：將資料與動作傳送至 Google Sheets (GAS) ---
+            const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
+            fetch(gasUrl, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: recordId,
+                    action: 'save',
+                    date: d,
+                    time: t,
+                    start_point: st,
+                    end_point: ed,
+                    transport: tr,
+                    segment_steps: sSteps,
+                    note: n,
+                    receipt_image: currentReceiptBase64
+                })
+            }).catch(err => console.error("GAS 寫入失敗:", err));
+            // --- 修改結束 ---
+
+            updateCloudIcon('unsynced');
+            try {
+                if (navigator.onLine && window.db && window.currentUserUid) {
+                    await firestoreWriteRecord(newRecord);
+                    hasUnsyncedChanges = false;
+                    updateCloudIcon('success');
+                } else { await enqueueSyncItem({ ...newRecord, action: 'save' }); }
+            } catch (error) { await enqueueSyncItem({ ...newRecord, action: 'save' }); }
+        }
+
+        async function executeDelete() {
+            if (!editingRecordId) return;
+            const targetId = editingRecordId;
+            records = records.filter(r => r.id !== targetId);
+            await dbDelete('recordsStore', targetId);
+            closeAddModal();
+            renderAll();
+
+            // --- 新增：將刪除指令傳送至 Google Sheets (GAS) ---
+            const gasUrl = "https://script.google.com/macros/s/AKfycbwHggG23aVfGWEkwUeawvjhv65KEvJ8PPsVUBZV2ej_GKTdPEpiRhzqNPncdF5IHSle/exec";
+            fetch(gasUrl, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: targetId,
+                    action: 'delete'
+                })
+            }).catch(err => console.error("GAS 刪除失敗:", err));
+            // --- 新增結束 ---
+
+            updateCloudIcon('unsynced');
+            try {
+                if (navigator.onLine && window.db && window.currentUserUid) {
+                    await firestoreDeleteRecord(targetId);
+                    hasUnsyncedChanges = false;
+                    updateCloudIcon('success');
+                } else { await enqueueSyncItem({ id: targetId, action: 'delete' }); }
+            } catch (error) { await enqueueSyncItem({ id: targetId, action: 'delete' }); }
+        }
+
+        async function forceSyncDownload() {
+            if (!window.db || !window.currentUserUid) return;
+            if (hasUnsyncedChanges) { alert("尚有本地變更未上傳，暫停下載覆蓋"); return; }
+            showLoading("雲端同步中...");
+            try {
+                const colRef = window.fsCollection(window.db, 'users', window.currentUserUid, 'walks');
+                const snap = await window.fsGetDocs(colRef);
+                records = [];
+                snap.forEach(docSnap => {
+                    const r = { id: String(docSnap.id), ...docSnap.data() };
+                    records.push(r);
+                });
+                await dbClear('recordsStore');
+                for (const r of records) await dbPut('recordsStore', r);
+                updateCloudIcon('success');
+                renderAll();
+            } catch (error) {
+                console.error("同步失敗", error);
+                updateCloudIcon('error');
+            } finally { hideLoading(); }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
