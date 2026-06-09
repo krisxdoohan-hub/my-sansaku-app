@@ -98,7 +98,7 @@
             <i class="ph ph-map-pin-line text-2xl group-active:scale-90 transition-transform"></i>
             <div class="flex flex-col">
                 <span class="font-black tracking-widest text-sm text-stone-800">散策軌跡手帳</span>
-                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.6</span></span>
+                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.7</span></span>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -223,10 +223,10 @@
                     <input type="file" id="input-receipt" accept="image/*" class="hidden" onchange="handleReceiptUpload(event)">
                     <div id="receipt-preview-container" class="hidden flex-1 items-center justify-between">
                         <div class="flex items-center gap-2 overflow-hidden">
-                            <img id="receipt-preview" src="" class="h-10 w-10 object-cover rounded shadow-sm border border-amber-200">
+                            <img id="receipt-preview" src="" class="h-10 w-10 object-cover rounded shadow-sm border border-amber-200 cursor-pointer hover:opacity-80 transition-opacity" onclick="if(this.src) window.open(this.src, '_blank')" title="點擊放大觀看">
                             <span id="receipt-name" class="text-[10px] text-stone-500 truncate max-w-[80px]">已選取照片</span>
                         </div>
-                        <button type="button" onclick="clearReceipt()" class="text-rose-400 hover:text-rose-600 focus:outline-none p-1"><i class="ph ph-x-circle text-xl"></i></button>
+                        <button type="button" onclick="clearReceipt(true)" class="text-rose-400 hover:text-rose-600 focus:outline-none p-1"><i class="ph ph-x-circle text-xl"></i></button>
                     </div>
                 </div>
             </div>
@@ -272,6 +272,7 @@
         let hasUnsyncedChanges = false;
         let syncQueue = [];
         let currentReceiptBase64 = null;
+        let isReceiptDeleted = false;
         let focusedInput = 'start';
         let currentView = 'list';
 
@@ -586,7 +587,8 @@
             document.getElementById('display-seg-steps').innerText = '0';
             document.getElementById('input-note').value = '';
             document.getElementById('input-transport').value = '步行';
-            clearReceipt();
+            isReceiptDeleted = false;
+            clearReceipt(false);
             
             autoFillStartPoint();
             renderQuickTags();
@@ -612,9 +614,11 @@
             document.getElementById('input-cumul-steps').value = r.cumulative_steps || '';
             document.getElementById('input-note').value = r.note || '';
             
+            isReceiptDeleted = false;
+            
             calculateSegmentSteps();
             renderQuickTags();
-            clearReceipt();
+            clearReceipt(false);
 
             if (r.receipt_image || r.receipt_url) {
                 const previewImg = document.getElementById('receipt-preview');
@@ -665,8 +669,11 @@
             reader.readAsDataURL(file);
         }
 
-        function clearReceipt() {
+        function clearReceipt(isUserAction = false) {
             currentReceiptBase64 = null;
+            if (isUserAction) {
+                isReceiptDeleted = true;
+            }
             document.getElementById('input-receipt').value = '';
             document.getElementById('receipt-preview-container').classList.add('hidden');
             document.getElementById('receipt-preview-container').classList.remove('flex');
@@ -742,7 +749,7 @@
                 cumulative_steps: cSteps, segment_steps: sSteps,
                 note: n, 
                 receipt_image: currentReceiptBase64,
-                receipt_url: existingRecord ? existingRecord.receipt_url : null,
+                receipt_url: isReceiptDeleted ? null : (existingRecord ? existingRecord.receipt_url : null),
                 rev: existingRecord ? (existingRecord.rev || 0) + 1 : 1
             };
 
@@ -769,7 +776,8 @@
                         transport: tr,
                         segment_steps: sSteps,
                         note: n,
-                        receipt_image: currentReceiptBase64
+                        receipt_image: currentReceiptBase64,
+                        delete_receipt: isReceiptDeleted
                     })
                 });
                 
