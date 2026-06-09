@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sansaku-cache-v0.0.0.6';
+const CACHE_NAME = 'sansaku-cache-v0.0.0.7';
 
 // 定義需要優先快取的核心靜態資源
 const urlsToCache = [
