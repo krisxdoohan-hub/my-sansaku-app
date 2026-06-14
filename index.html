@@ -338,6 +338,8 @@
                 window.currentUserUid = null;
                 records = [];
                 await dbClear('recordsStore');
+                await dbClear('queueStore');
+                hasUnsyncedChanges = false;
                 window.location.reload();
             } catch (e) { alert("登出失敗"); }
         }
