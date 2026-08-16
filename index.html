@@ -98,7 +98,7 @@
             <i class="ph ph-map-pin-line text-2xl group-active:scale-90 transition-transform"></i>
             <div class="flex flex-col">
                 <span class="font-black tracking-widest text-sm text-stone-800">散策軌跡手帳</span>
-                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.8</span></span>
+                <span class="text-[10px] font-bold text-amber-500">個人專屬步數紀錄 <span class="text-stone-400 font-normal ml-1">v0.0.0.9 - 新增區段時間 </span></span>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -199,21 +199,36 @@
                         <option value="海外">✈️ 海外</option>
                     </select>
                     <select id="input-transport" class="w-1/4 border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm font-bold text-stone-700 shadow-sm px-1">
-                        <option value="步行">🚶 步行</option>
+
                         <option value="捷運">🚇 捷運</option>
+                        <option value="步行">🚶 步行</option>
+                        <option value="捷運+步行">🚇🚶 捷運+步行</option>
                         <option value="公車">🚌 公車</option>
                         <option value="火車/高鐵">🚆 鐵路</option>
                         <option value="自行車">🚲 單車</option>
                     </select>
                     <div class="w-2/4 relative">
-                        <input type="number" id="input-cumul-steps" placeholder="請輸入 Garmin 上的總步數" oninput="calculateSegmentSteps()" class="w-full border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm font-bold text-stone-800 shadow-sm pl-10 pr-2">
-                        <i class="ph ph-watch text-amber-400 absolute left-3 top-1/2 -translate-y-1/2 text-lg"></i>
+                        <input type="number" id="input-cumul-steps" placeholder="Garmin 總步數" oninput="calculateSegmentSteps()" class="w-full border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm font-bold text-stone-800 shadow-sm pl-10 pr-2">
+                        <i class="ph ph-sneaker text-amber-400 absolute left-3 top-1/2 -translate-y-1/2 text-lg"></i>
                     </div>
                 </div>
 
-                <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-3 flex justify-between items-center shadow-inner">
-                    <span class="text-xs font-bold text-amber-800">此段區間消耗步數自動結算：</span>
-                    <span class="text-xl font-black text-rose-600 tracking-wider" id="display-seg-steps">0</span>
+                <div class="flex gap-2">
+                    <div class="w-full relative">
+                        <input type="text" inputmode="numeric" id="input-cumul-time" placeholder="Garmin 總時間 (例：輸入 629 自動轉 6:29)" oninput="formatAndCalculateTime(this)" class="w-full border-amber-200 rounded-xl p-3 bg-white border focus:ring-2 focus:ring-amber-500 focus:outline-none text-sm font-bold text-stone-800 shadow-sm pl-10 pr-2">
+                        <i class="ph ph-timer text-amber-400 absolute left-3 top-1/2 -translate-y-1/2 text-lg"></i>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50/50 border border-amber-100 rounded-xl p-3 flex flex-col gap-1 shadow-inner">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-amber-800">區間步數結算：</span>
+                        <span class="text-xl font-black text-rose-600 tracking-wider" id="display-seg-steps">0</span>
+                    </div>
+                    <div class="flex justify-between items-center mt-1 pt-1 border-t border-amber-100/50">
+                        <span class="text-xs font-bold text-amber-800">區間時間結算：</span>
+                        <span class="text-xl font-black text-rose-600 tracking-wider" id="display-seg-time">00:00</span>
+                    </div>
                 </div>
 
                 <div>
@@ -451,7 +466,9 @@
                 const trIcon = r.transport === '步行' ? 'ph-sneaker text-emerald-500 bg-emerald-50' : 
                                r.transport === '捷運' ? 'ph-train text-blue-500 bg-blue-50' : 
                                r.transport === '公車' ? 'ph-bus text-amber-500 bg-amber-50' : 
-                               r.transport === '自行車' ? 'ph-bicycle text-teal-500 bg-teal-50' : 'ph-train-regional text-indigo-500 bg-indigo-50';
+                               r.transport === '自行車' ? 'ph-bicycle text-teal-500 bg-teal-50' : 
+                               r.transport === '捷運+步行' ? 'ph-train text-purple-500 bg-purple-50' :
+                               'ph-train-regional text-indigo-500 bg-indigo-50';
                 
                 const receiptIcon = (r.receipt_image || r.receipt_url) ? '<i class="ph ph-image text-amber-400 ml-1"></i>' : '';
 
@@ -467,9 +484,10 @@
                             <p class="text-xs font-bold text-stone-400 truncate max-w-[150px] mt-0.5">${r.note || ''}</p>
                         </div>
                     </div>
-                    <div class="text-right">
-                        <p class="text-[10px] font-bold text-stone-400 mb-0.5">區間步數</p>
-                        <span class="text-lg font-black text-rose-500">${(r.segment_steps || 0).toLocaleString()}</span>
+                    <div class="text-right flex flex-col items-end">
+                        <p class="text-[10px] font-bold text-stone-400 mb-0.5">區間步數 / 時間</p>
+                        <span class="text-lg font-black text-rose-500 leading-none">${(r.segment_steps || 0).toLocaleString()}</span>
+                        <span class="text-[11px] font-bold text-amber-600 mt-1 flex items-center gap-1"><i class="ph ph-timer"></i> ${r.segment_time || '00:00'}</span>
                     </div>
                 </div>`;
             });
@@ -492,7 +510,7 @@
 
             const trCounts = {};
             targetRecords.forEach(r => trCounts[r.transport] = (trCounts[r.transport] || 0) + 1);
-            const colors = {'步行': '#10b981', '捷運': '#3b82f6', '公車': '#f59e0b', '火車/高鐵': '#6366f1', '自行車': '#14b8a6'};
+            const colors = {'步行': '#10b981', '捷運': '#3b82f6', '公車': '#f59e0b', '火車/高鐵': '#6366f1', '自行車': '#14b8a6', '捷運+步行': '#a855f7'};
             
             let conicStops = [], currentDeg = 0, legendHtml = '';
             const totalTR = targetRecords.length;
@@ -555,6 +573,69 @@
             }
         }
 
+        function timeToSeconds(timeStr) {
+            if (!timeStr) return 0;
+            const parts = timeStr.split(':').map(Number);
+            if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+            if (parts.length === 2) return parts[0] * 60 + parts[1];
+            if (parts.length === 1) return parts[0];
+            return 0;
+        }
+
+        function secondsToTime(totalSec) {
+            if (totalSec <= 0) return "00:00";
+            const h = Math.floor(totalSec / 3600);
+            const m = Math.floor((totalSec % 3600) / 60);
+            const s = totalSec % 60;
+            if (h > 0) {
+                return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            } else {
+                return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            }
+        }
+
+        function formatAndCalculateTime(el) {
+            if (el) {
+                let val = el.value.replace(/\D/g, '');
+                if (val.length > 6) val = val.substring(0, 6);
+                let formatted = val;
+                if (val.length >= 5) {
+                    formatted = val.substring(0, val.length - 4) + ':' + val.substring(val.length - 4, val.length - 2) + ':' + val.substring(val.length - 2);
+                } else if (val.length >= 3) {
+                    formatted = val.substring(0, val.length - 2) + ':' + val.substring(val.length - 2);
+                }
+                el.value = formatted;
+            }
+
+            const currentCumulStr = document.getElementById('input-cumul-time').value;
+            const currentCumulSec = timeToSeconds(currentCumulStr);
+
+            if (currentCumulSec === 0) {
+                document.getElementById('display-seg-time').innerText = '00:00';
+                return "00:00";
+            }
+
+            const dateStr = document.getElementById('input-date').value;
+            const todaysRecords = records.filter(r => r.date === dateStr).sort((a,b) => a.time.localeCompare(b.time));
+            
+            let lastCumulSec = 0;
+            const otherRecords = todaysRecords.filter(r => r.id !== editingRecordId);
+            if (otherRecords.length > 0) {
+                const currentTime = document.getElementById('input-time').value || "23:59";
+                const earlierRecords = otherRecords.filter(r => r.time <= currentTime);
+                if (earlierRecords.length > 0) {
+                    const lastRec = earlierRecords[earlierRecords.length - 1];
+                    if (lastRec.cumulative_time) {
+                        lastCumulSec = timeToSeconds(lastRec.cumulative_time);
+                    }
+                }
+            }
+            const segSec = Math.max(0, currentCumulSec - lastCumulSec);
+            const segTimeStr = secondsToTime(segSec);
+            document.getElementById('display-seg-time').innerText = segTimeStr;
+            return segTimeStr;
+        }
+
         function calculateSegmentSteps() {
             const currentCumul = parseInt(document.getElementById('input-cumul-steps').value) || 0;
             if (currentCumul === 0) {
@@ -591,6 +672,8 @@
             document.getElementById('input-end').value = '';
             document.getElementById('input-cumul-steps').value = '';
             document.getElementById('display-seg-steps').innerText = '0';
+            document.getElementById('input-cumul-time').value = '';
+            document.getElementById('display-seg-time').innerText = '00:00';
             document.getElementById('input-note').value = '';
             document.getElementById('input-location-type').value = '國內';
             document.getElementById('input-transport').value = '步行';
@@ -620,11 +703,13 @@
             document.getElementById('input-location-type').value = r.location_type || '國內';
             document.getElementById('input-transport').value = r.transport;
             document.getElementById('input-cumul-steps').value = r.cumulative_steps || '';
+            document.getElementById('input-cumul-time').value = r.cumulative_time || '';
             document.getElementById('input-note').value = r.note || '';
             
             isReceiptDeleted = false;
             
             calculateSegmentSteps();
+            formatAndCalculateTime(document.getElementById('input-cumul-time'));
             renderQuickTags();
             clearReceipt(false);
 
@@ -744,6 +829,8 @@
             const tr = document.getElementById('input-transport').value;
             const cSteps = parseInt(document.getElementById('input-cumul-steps').value) || 0;
             const sSteps = calculateSegmentSteps();
+            const cTime = document.getElementById('input-cumul-time').value.trim();
+            const sTime = formatAndCalculateTime();
             const n = document.getElementById('input-note').value;
 
             if (!d || !t || !st || !ed) { alert("日期、時間、起點與終點皆為必填！"); return; }
@@ -756,6 +843,7 @@
                 date: d, time: t, 
                 start_point: st, end_point: ed, location_type: locType, transport: tr,
                 cumulative_steps: cSteps, segment_steps: sSteps,
+                cumulative_time: cTime, segment_time: sTime,
                 note: n, 
                 receipt_image: currentReceiptBase64,
                 receipt_url: isReceiptDeleted ? null : (existingRecord ? existingRecord.receipt_url : null),
@@ -785,6 +873,8 @@
                         location_type: locType,
                         transport: tr,
                         segment_steps: sSteps,
+                        segment_time: sTime,
+                        cumulative_time: cTime,
                         note: n,
                         receipt_image: currentReceiptBase64,
                         delete_receipt: isReceiptDeleted
